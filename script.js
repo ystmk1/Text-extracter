@@ -545,7 +545,7 @@ async function processWithGemini(text) {
     const geminiKey = geminiApiKeyInput.value.trim();
     if (!geminiKey) return null;
 
-    const MODEL = "gemini-2.0-flash"; // 사용자 요청 모델
+    const MODEL = "gemini-1.5-flash"; // 무료 티어에서 더 안정적인 할당량을 제공하는 모델로 변경
     const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${geminiKey}`;
 
     const prompt = `As a professional book editor, clean up the following OCR-extracted Korean text.
@@ -561,25 +561,35 @@ Rules:
 Text to refine:
 ${text}`;
 
-    const res = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.1, topP: 0.95 }
-        })
-    });
+    while (true) {
+        const res = await fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: { temperature: 0.1, topP: 0.95 }
+            })
+        });
 
-    if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(`Gemini API 오류: ${errorData.error.message || res.status}`);
-    }
+        if (res.status === 429) { // 할당량 초과 시 대기 후 재시도
+            for (let s = 10; s > 0; s--) {
+                spellerBtn.textContent = `AI 한도 도달 - ${s}초 대기 중...`;
+                await new Promise(r => setTimeout(r, 1000));
+            }
+            continue;
+        }
 
-    const data = await res.json();
-    if (data.candidates && data.candidates[0].content && data.candidates[0].content.parts) {
-        return data.candidates[0].content.parts[0].text.trim();
+        if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(`Gemini API 오류: ${errorData.error.message || res.status}`);
+        }
+
+        const data = await res.json();
+        if (data.candidates && data.candidates[0].content && data.candidates[0].content.parts) {
+            return data.candidates[0].content.parts[0].text.trim();
+        }
+        throw new Error('AI 응답을 받지 못했습니다.');
     }
-    throw new Error('AI 응답을 받지 못했습니다.');
 }
 
 spellerBtn.addEventListener('click', async () => {
