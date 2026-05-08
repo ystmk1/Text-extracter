@@ -545,8 +545,28 @@ async function processWithGemini(text) {
     const geminiKey = geminiApiKeyInput.value.trim();
     if (!geminiKey) return null;
 
-    const MODEL = "gemini-1.5-flash"; // 무료 티어에서 더 안정적인 할당량을 제공하는 모델로 변경
-    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${geminiKey}`;
+    // 1. 사용 가능한 모델 자동 감지 (Auto-Detection)
+    let modelName = "gemini-1.5-flash"; // 기본 폴백 모델
+    try {
+        const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${geminiKey}`;
+        const listRes = await fetch(listUrl);
+        if (listRes.ok) {
+            const listData = await listRes.json();
+            // generateContent를 지원하고 'flash'가 포함된 모델 중 가장 최신 것 찾기
+            const flashModel = listData.models
+                .filter(m => m.supportedGenerationMethods.includes('generateContent') && m.name.includes('flash'))
+                .sort((a, b) => b.name.localeCompare(a.name))[0];
+            
+            if (flashModel) {
+                modelName = flashModel.name; // 'models/gemini-1.5-flash' 형태
+            }
+        }
+    } catch (e) {
+        console.warn("모델 자동 감지 실패, 기본 모델 사용:", e);
+    }
+
+    // 2. 선택된 모델로 텍스트 정제 요청
+    const API_URL = `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent?key=${geminiKey}`;
 
     const prompt = `As a professional book editor, clean up the following OCR-extracted Korean text.
 Rules:
@@ -571,7 +591,7 @@ ${text}`;
             })
         });
 
-        if (res.status === 429) { // 할당량 초과 시 대기 후 재시도
+        if (res.status === 429) { 
             for (let s = 10; s > 0; s--) {
                 spellerBtn.textContent = `AI 한도 도달 - ${s}초 대기 중...`;
                 await new Promise(r => setTimeout(r, 1000));
