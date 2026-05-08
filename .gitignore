@@ -1,6 +1,0 @@
-node_modules/
-.env
-google-credentials.json
-*.log
-.DS_Store
-
