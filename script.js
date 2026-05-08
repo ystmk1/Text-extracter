@@ -206,15 +206,15 @@ function getBase64(file) {
 }
 
 // 책 후처리 (줄바꿈 정리) 함수
-function processBookText(text, mode) {
+function processBookText(text, mode, targetPageNum = null) {
     if (mode === 'off' || !text) return text;
 
-    // 1. 고도화된 조사/어미/패턴 리스트 (분석된 케이스들)
+    // 1. 조사/어미 리스트 (의존 명사 '수', '것' 등은 제외하여 오결합 방지)
     const suffixList = [
         "은", "는", "이", "가", "을", "를", "의", "에", "에서", "에게", "로", "으로", "와", "과", "도", "만", 
         "까지", "마저", "조차", "부터", "이나", "나", "라도", "다", "고", "며", "면", "니", "지", "게", "어", "아", 
-        "던", "었", "았", "겠", "십", "습", "운", "음", "기", "할", "한", "하는", "하", "된", "될", "수", "있", "없", 
-        "것", "들", "적", "스럽", "스러운", "로운", "롭", "리", "리를", "라", "라며", "였", "였던", "였으", 
+        "던", "었", "았", "겠", "십", "습", "운", "음", "기", "할", "한", "하는", "하", "된", "될",
+        "스럽", "스러운", "로운", "롭", "리", "리를", "라", "라며", "였", "였던", "였으", 
         "었던", "았단", "웠던", "겠으", "다며", "다고", "라는", "다는", "이랄", "이냐", "냐며",
         "서", "진", "온", "예요", "어지는", "어요", "각", "요", "해질", "이다",
         "단하여", "동차의", "었다", "차",
@@ -223,102 +223,79 @@ function processBookText(text, mode) {
         "랑이를", "스러웠다", "동안을", "가로를",
         "히는", "겠다",
         "구먼요", "이야기다", "점에", "움에",
-        "이야", "실한", "이라", "었잖아", 
-        "온다", "인가", 
+        "이야", "실한", "이라", "었잖아",
+        "온다", "인가",
         "밖", "밖을",
         "지요", 
+        "정했어", "열다섯", "갈수", "될",
+        "없이", "게", "다시", "등짝에", "흔적이",
         "안일", "만스럽", "무런", "미를", "어오는", "아왔다", "람들은", "질밖에"
     ];
     const suffixPattern = suffixList.join('|');
     const suffixRegex = new RegExp(`^(${suffixPattern})`);
 
-    // 2. 노이즈 및 특수 오차 제거
-    // 2-1. 불필요한 기호 및 마침표 연타 정리
+    // 2. 노이즈 제거
     text = text.replace(/[·.．…‥・]{2,}/g, '...');
-
-    // 2-2. 한자 제거 (OCR 노이즈)
     text = text.replace(/[\u4e00-\u9fa5]+/g, '');
     
-    // 2-3. 페이지 번호 또는 중간 숫자로 끊긴 단어 이어주기
-    text = text.replace(/([가-힣])\s*\d+\s*([가-힣])/g, '$1\n$2');
+    // 2-3. [연속 숫자 기반] 페이지 번호 처리 (삭제가 아닌 구분자로 활용)
+    if (targetPageNum !== null) {
+        // 단어 사이에 페이지 번호가 박힌 경우 -> 구분자로 변경하여 흐름 분리
+        const midPageRegex = new RegExp(`([가-힣])\\s*${targetPageNum}\\s*([가-힣])`, 'g');
+        text = text.replace(midPageRegex, `$1\n\n${targetPageNum}p.\n\n$2`);
+        
+        // 줄 시작/끝의 페이지 번호 -> 포맷팅 및 개행 추가
+        const edgePageRegex = new RegExp(`(^|\\n)\\s*${targetPageNum}\\s*(\\n|$)`, 'g');
+        text = text.replace(edgePageRegex, `$1\n\n${targetPageNum}p.\n\n$2`);
+    }
 
-    // 2-4. 라인 시작의 숫자+특수문자 노이즈 제거
+    // 2-4. 기타 고정 노이즈 제거
     text = text.replace(/(?:\n|^)\d+\s*[・·]\s*/g, '\n');
-    // 모든 라인 시작의 숫자 노이즈 제거 (알파벳 포함)
     text = text.replace(/(?:\n|^)\d+\s+([가-힣A-Za-z“"「『'‘])/g, '\n$1');
-
-    // 2-5. 문단 끝의 숫자 노이즈 제거
-    text = text.replace(/\s+\d+(?:\s+\d+)*\s*$/gm, '');
-
-    // 2-6. 대화문 앞의 불필요한 한 글자 노이즈 제거
     text = text.replace(/(?<=\n|^)[가-힣]\s+([“"「『'‘])/g, '$1');
-
-    // 2-7. 여는 따옴표 뒤의 불필요한 공백 제거
     text = text.replace(/([“"「『'‘])\s+/g, '$1');
-
-    // 2-8. 알파벳과 한글 조사 사이의 공백 제거
     text = text.replace(/([A-Za-z])\s+([은는이가을를의에])/g, '$1$2');
-
-    // 2-9. 단독 숫자로 된 페이지 번호 형식화
-    text = text.replace(/^(?:\d+)\s*$/gm, '$&p.');
-
-    // 2-10. 특정 출판사 노이즈 제거
     text = text.replace(/을유행/g, '');
 
-    // 3. 내부 공백 수정 (단어 사이의 잘못된 공백 제거)
+    // 3. 내부 공백 수정 (단어 사이의 오공백 제거 - 보수적 적용)
     const internalFixRegex = new RegExp(`([가-힣])\\s+(${suffixPattern})(?=[\\s.,!?"'”’]|$)`, 'g');
     text = text.replace(internalFixRegex, '$1$2');
 
     let lines = text.split(/\r?\n/);
-    
-    // 페이지 번호 규칙 (맨 처음과 맨 끝)
-    if (lines.length > 0 && /^\d+$/.test(lines[0].trim())) {
-        lines[0] = lines[0].trim() + '\n';
-    }
-    if (lines.length > 1 && /^\d+$/.test(lines[lines.length - 1].trim())) {
-        lines[lines.length - 1] = '\n' + lines[lines.length - 1].trim();
-    }
-
     let result = '';
     
     for (let i = 0; i < lines.length; i++) {
         let line = lines[i];
         let trimmed = line.trim();
-        
-        if (trimmed === '') {
-            result += '\n\n';
-            continue;
+        if (trimmed === '') { 
+            if (!result.endsWith('\n\n')) result += '\n\n'; 
+            continue; 
         }
 
+        // 페이지 구분자(p.)가 포함된 줄은 절대 합치지 않음
+        const isPageMarker = /^\d+p\.$/.test(trimmed);
         const isTerminator = /[.!?]['"”’'’]?$/.test(trimmed);
         const hasHyphen = /-$/.test(trimmed);
-        // 작은따옴표 포함 대화문 판정
-        const isDialogue = /^[“"「『'‘]/.test(trimmed) || /[”"」』'’]$/.test(trimmed);
 
-        // 다음 줄 확인
         let nextTrimmed = '';
-        if (i < lines.length - 1) {
-            nextTrimmed = lines[i+1].trim();
-        }
+        if (i < lines.length - 1) nextTrimmed = lines[i+1].trim();
         const isNextDialogue = /^[“"「『'‘]/.test(nextTrimmed);
         const isCurrentDialogue = /^[“"「『'‘]/.test(trimmed);
+        const isNextPageMarker = /^\d+p\.$/.test(nextTrimmed);
 
-        // 본문 추가
         if (hasHyphen && nextTrimmed !== '' && /^[a-zA-Z]/.test(nextTrimmed)) {
             result += trimmed.slice(0, -1);
         } else {
             result += trimmed;
         }
 
-        // 줄 이어붙이기 로직
         if (i < lines.length - 1) {
             if (nextTrimmed === '') {
                 result += '\n';
-            } else if (isCurrentDialogue || isNextDialogue) {
-                // 대화문/인용문 전후는 확실히 문단 분리
+            } else if (isCurrentDialogue || isNextDialogue || isPageMarker || isNextPageMarker) {
+                // 페이지 구분자나 대화문 전후는 무조건 문단 분리
                 result += '\n\n';
             } else if (isTerminator) {
-                // 문장 종결 시, 다음이 일반 문장이면 공백으로 이음 (하나의 문단 유지)
                 result += ' '; 
             } else {
                 if (hasHyphen && /^[a-zA-Z]/.test(nextTrimmed)) {
@@ -335,24 +312,20 @@ function processBookText(text, mode) {
         }
     }
     
-    // 최종 정리
     result = result.replace(/\n{3,}/g, '\n\n');
     result = result.replace(/[ ]{2,}/g, ' ');
-    
     return result.trim();
 }
 
 // 텍스트 추출 버튼 로직
 extractBtn.addEventListener('click', async () => {
     if (!currentFiles || currentFiles.length === 0) return;
-
     if (radioGoogle.checked && !apiKeyInput.value.trim()) {
         alert('Google Vision API 키를 입력해주세요!');
         apiKeyInput.focus();
         return;
     }
     
-    // UI 업데이트
     previewSection.style.display = 'none';
     resultSection.style.display = 'none';
     loadingSection.style.display = 'block';
@@ -360,34 +333,28 @@ extractBtn.addEventListener('click', async () => {
     loadingText.textContent = '텍스트 추출 시작...';
     
     try {
-        let allExtractedText = [];
+        let processedPageTexts = [];
+        let lastDetectedPageNum = null;
         const totalFiles = currentFiles.length;
 
         for (let i = 0; i < totalFiles; i++) {
             const file = currentFiles[i];
             let extractedText = '';
-            
             const fileProgressText = totalFiles > 1 ? `(${i+1}/${totalFiles})` : '';
 
             if (radioGoogle.checked) {
-                // 1. Google Cloud Vision REST API 직접 호출
-                progressFill.style.width = '50%';
-                loadingText.textContent = `Google Vision 서버에 요청 중... ${fileProgressText}`;
+                progressFill.style.width = '20%';
+                loadingText.textContent = `Google Vision 요청 중... ${fileProgressText}`;
                 
                 const apiKey = apiKeyInput.value.trim();
                 const base64Img = await getBase64(file);
-                
                 const isDocument = visionMode.value === 'DOCUMENT_TEXT_DETECTION';
                 const reqBody = {
-                    requests: [
-                        {
-                            image: { content: base64Img },
-                            features: [{ type: isDocument ? 'DOCUMENT_TEXT_DETECTION' : 'TEXT_DETECTION' }],
-                            imageContext: {
-                                languageHints: visionLang.value.split('+')
-                            }
-                        }
-                    ]
+                    requests: [{
+                        image: { content: base64Img },
+                        features: [{ type: isDocument ? 'DOCUMENT_TEXT_DETECTION' : 'TEXT_DETECTION' }],
+                        imageContext: { languageHints: visionLang.value.split('+') }
+                    }]
                 };
 
                 const response = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`, {
@@ -395,23 +362,8 @@ extractBtn.addEventListener('click', async () => {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(reqBody)
                 });
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    let errorMsg = `Google API 오류: ${response.status}`;
-                    try {
-                        const errJson = JSON.parse(errorText);
-                        const msg = errJson?.error?.message || errJson?.error?.status || errorText;
-                        errorMsg += ` - ${msg}`;
-                    } catch {
-                        errorMsg += ` - ${errorText}`;
-                    }
-                    throw new Error(errorMsg);
-                }
-
+                if (!response.ok) throw new Error(`Google API 오류: ${response.status}`);
                 const data = await response.json();
-                progressFill.style.width = '100%';
-
                 if (data.responses && data.responses[0].fullTextAnnotation) {
                     extractedText = data.responses[0].fullTextAnnotation.text;
                     methodBadge.textContent = 'Google Cloud Vision API';
@@ -419,76 +371,87 @@ extractBtn.addEventListener('click', async () => {
                 } else {
                     throw new Error('텍스트를 감지하지 못했습니다.');
                 }
-
             } else {
-                // 2. Tesseract.js (로컬 처리)
                 methodBadge.textContent = 'Tesseract.js (로컬)';
                 methodBadge.style.color = 'var(--ink-dim)';
                 const { data: { text } } = await Tesseract.recognize(
-                    file,
-                    visionLang.value === 'ko' ? 'kor' : (visionLang.value === 'en' ? 'eng' : 'kor+eng'), 
-                    {
-                        logger: (m) => {
-                            if (m.status === 'recognizing text') {
-                                const progress = Math.round(m.progress * 100);
-                                progressFill.style.width = progress + '%';
-                                loadingText.textContent = `Tesseract.js 분석 중... ${fileProgressText} (${progress}%)`;
-                            }
+                    file, visionLang.value === 'ko' ? 'kor' : 'eng',
+                    { logger: m => {
+                        if (m.status === 'recognizing text') {
+                            const p = Math.round(m.progress * 100);
+                            progressFill.style.width = p + '%';
+                            loadingText.textContent = `분석 중... ${fileProgressText} (${p}%)`;
                         }
-                    }
+                    }}
                 );
                 extractedText = text;
             }
+
+            // ── 지능형 페이지 번호 감지 및 연속성 체크 ──
+            let lines = extractedText.split('\n').map(l => l.trim()).filter(l => l !== '');
+            let confirmedPageNum = null;
             
-            allExtractedText.push(extractedText);
+            if (lines.length > 0) {
+                let topNumMatch = lines[0].match(/^\d+$/);
+                let bottomNumMatch = lines[lines.length - 1].match(/^\d+$/);
+                let candidates = [];
+                if (topNumMatch) candidates.push(parseInt(topNumMatch[0]));
+                if (bottomNumMatch) candidates.push(parseInt(bottomNumMatch[0]));
+
+                for (let num of candidates) {
+                    if (lastDetectedPageNum === null) {
+                        lastDetectedPageNum = num;
+                        confirmedPageNum = num;
+                        break;
+                    } else if (num === lastDetectedPageNum + 1) {
+                        lastDetectedPageNum = num;
+                        confirmedPageNum = num;
+                        break;
+                    }
+                }
+            }
+
+            // 각 페이지별로 후처리 적용
+            let pageProcessed = processBookText(extractedText, postProcessMode.value, confirmedPageNum);
+            processedPageTexts.push(pageProcessed);
+            
+            progressFill.style.width = Math.round(((i + 1) / totalFiles) * 100) + '%';
+            loadingText.textContent = `처리 완료 ${fileProgressText}`;
         }
 
-        // 결과 표시 및 후처리 자동 적용
-        // 여러 장일 경우 내용물을 문단으로 이어서(개행 2개) 연속 처리합니다.
-        let combinedRawText = allExtractedText.join('\n\n');
-        let finalText = processBookText(combinedRawText, postProcessMode.value);
-        
-        resultText.value = finalText.trim() || '텍스트를 찾을 수 없습니다.';
+        resultText.value = processedPageTexts.join('\n\n').trim() || '텍스트를 찾을 수 없습니다.';
         loadingSection.style.display = 'none';
         resultSection.style.display = 'block';
         
     } catch (error) {
         console.error('OCR 오류:', error);
-        alert(error.message || '텍스트 추출 중 오류가 발생했습니다. 다시 시도해주세요.');
+        alert(error.message || '오류가 발생했습니다.');
         loadingSection.style.display = 'none';
         previewSection.style.display = 'block';
     }
 });
 
-// 자동 수정 버튼 (수동 후처리)
+// 수동 수정 버튼
 fixBtn.addEventListener('click', () => {
     let text = resultText.value;
     if (!text) return;
-    
     resultText.value = processBookText(text, postProcessMode.value);
-    
-    // 피드백 제공
     const originalText = fixBtn.textContent;
     fixBtn.textContent = '✓ 정리완료!';
-    setTimeout(() => {
-        fixBtn.textContent = originalText;
-    }, 1500);
+    setTimeout(() => { fixBtn.textContent = originalText; }, 1500);
 });
 
-// 복사 버튼
+// 복사/다운로드/맞춤법 로직 (기존과 동일)
 copyBtn.addEventListener('click', () => {
     navigator.clipboard.writeText(resultText.value).then(() => {
-        const originalText = copyBtn.textContent;
-        copyBtn.textContent = '✓ 복사됨!';
-        setTimeout(() => { copyBtn.textContent = originalText; }, 2000);
+        const t = copyBtn.textContent; copyBtn.textContent = '✓ 복사됨!';
+        setTimeout(() => { copyBtn.textContent = t; }, 2000);
     });
 });
 
-// 다운로드 버튼
 downloadBtn.addEventListener('click', () => {
     const text = resultText.value;
     if (!text) return;
-    
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -499,8 +462,6 @@ downloadBtn.addEventListener('click', () => {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 });
-
-// ── 맞춤법 교정 ──────────────────────────────────────────
 
 function resetSpellerState() {
     spellOriginalText = null;
@@ -539,7 +500,7 @@ async function fetchSpeller(chunkText) {
                 spellerBtn.textContent = `한도 도달 — ${s}초 대기 중...`;
                 await new Promise(r => setTimeout(r, 1000));
             }
-            continue; // 재시도
+            continue;
         }
         if (!res.ok) throw new Error(`맞춤법 API 오류: ${res.status}`);
         return await res.json();
@@ -549,14 +510,11 @@ async function fetchSpeller(chunkText) {
 spellerBtn.addEventListener('click', async () => {
     const text = resultText.value;
     if (!text.trim()) return;
-
     spellerBtn.disabled = true;
     spellerBtn.textContent = '교정 중...';
-
     try {
         const chunks = splitIntoChunks(text);
         const allSuggestions = [];
-
         for (let i = 0; i < chunks.length; i++) {
             spellerBtn.textContent = `교정 중... (${i + 1}/${chunks.length})`;
             const data = await fetchSpeller(chunks[i].text);
@@ -564,17 +522,11 @@ spellerBtn.addEventListener('click', async () => {
                 allSuggestions.push({ ...s, start: s.start + chunks[i].offset, end: s.end + chunks[i].offset });
             }
         }
-
         if (allSuggestions.length === 0) {
             spellerBtn.textContent = '이상 없음 ✓';
-            setTimeout(() => {
-                spellerBtn.textContent = '맞춤법';
-                spellerBtn.disabled = false;
-            }, 2000);
+            setTimeout(() => { spellerBtn.textContent = '맞춤법'; spellerBtn.disabled = false; }, 2000);
             return;
         }
-
-        // 뒤에서부터 교체해야 앞 오프셋이 유지됨
         spellOriginalText = text;
         const sorted = allSuggestions.sort((a, b) => b.start - a.start);
         let result = text;
@@ -582,7 +534,6 @@ spellerBtn.addEventListener('click', async () => {
             result = result.slice(0, s.start) + s.candidates[0] + result.slice(s.end);
         }
         resultText.value = result;
-
         spellerBtn.textContent = `${allSuggestions.length}건 교정됨`;
         spellerRevertBtn.style.display = 'inline-block';
     } catch (e) {
