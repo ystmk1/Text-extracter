@@ -239,7 +239,8 @@ function processBookText(text, mode, targetPageNum = null) {
         "졌고", "품의", "입니다",
         "카타", "드를", "늘게", "만일",
         "가?", "합니까", "갤",
-        "마리를", "서랍에서", // 28차 분석 케이스
+        "마리를", "서랍에서",
+        "좇아", "가다가는", "없이", "되니까", // 29차 분석 케이스 (소설 표현)
         "안일", "만스럽", "무런", "미를", "어오는", "아왔다", "람들은", "질밖에"
     ];
     const suffixPattern = suffixList.join('|');
@@ -541,74 +542,85 @@ async function fetchSpeller(chunkText) {
     }
 }
 
+let currentGeminiKeyIndex = 0; // API 키 로테이션용 인덱스
+
 async function processWithGemini(text) {
-    const geminiKey = geminiApiKeyInput.value.trim();
-    if (!geminiKey) return null;
+    const rawKeys = geminiApiKeyInput.value.trim();
+    if (!rawKeys) return null;
 
-    // 1. 사용 가능한 모델 자동 감지 (Auto-Detection)
-    let modelName = "gemini-1.5-flash"; // 기본 폴백 모델
-    try {
-        const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${geminiKey}`;
-        const listRes = await fetch(listUrl);
-        if (listRes.ok) {
-            const listData = await listRes.json();
-            // generateContent를 지원하고 'flash'가 포함된 모델 중 가장 최신 것 찾기
-            const flashModel = listData.models
-                .filter(m => m.supportedGenerationMethods.includes('generateContent') && m.name.includes('flash'))
-                .sort((a, b) => b.name.localeCompare(a.name))[0];
-            
-            if (flashModel) {
-                modelName = flashModel.name; // 'models/gemini-1.5-flash' 형태
-            }
-        }
-    } catch (e) {
-        console.warn("모델 자동 감지 실패, 기본 모델 사용:", e);
-    }
+    // 줄바꿈으로 키 분리 및 유효한 키만 필터링
+    const geminiKeys = rawKeys.split(/\n/).map(k => k.trim()).filter(k => k !== "");
+    if (geminiKeys.length === 0) return null;
 
-    // 2. 선택된 모델로 텍스트 정제 요청
-    const API_URL = `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent?key=${geminiKey}`;
+    const MODEL = "gemini-1.5-flash";
+    
+    let retryCount = 0;
+    while (retryCount < geminiKeys.length + 1) {
+        // 인덱스가 범위를 벗어나면 처음으로 순환
+        if (currentGeminiKeyIndex >= geminiKeys.length) currentGeminiKeyIndex = 0;
+        
+        const currentKey = geminiKeys[currentGeminiKeyIndex];
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${currentKey}`;
 
-    const prompt = `As a professional book editor, clean up the following OCR-extracted Korean text.
+        const prompt = `As a professional book editor, clean up the following OCR-extracted Korean text.
 Rules:
-1. Fix all typos, spacing, and punctuation based on context.
-2. Merge lines that belong to the same paragraph naturally.
-3. Separate dialogues (quotes) from narration with double newlines. 
-4. Correct OCR artifacts (broken characters, joined words that should be separate, noise).
-5. Preserve the original literary tone, meaning, and paragraph structure of a novel.
-6. If there are page markers like "88p.", keep them as clear delimiters.
-7. Output ONLY the refined Korean text without any explanation or conversational response.
+1. Fix all typos, spacing, and punctuation based on context. (e.g., "단 한 가지", "일을 하는", "의자 위에")
+2. Remove "Phantom Quotes": OCR often adds a leading quote (") to narration lines incorrectly. Remove them if the line is a descriptive sentence.
+3. Restore "Missing Closing Quotes": Ensure every dialogue starts and ends with a quote (").
+4. Merge lines that belong to the same paragraph naturally.
+5. Separate dialogues from narration with double newlines. 
+6. Correct OCR artifacts (broken characters, noise).
+7. Preserve the original literary tone and meaning.
+8. Keep page markers like "256p." as clear headers at the top of their respective sections.
+9. Output ONLY the refined Korean text without any explanation.
 
 Text to refine:
 ${text}`;
 
-    while (true) {
-        const res = await fetch(API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: { temperature: 0.1, topP: 0.95 }
-            })
-        });
+        try {
+            const res = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { temperature: 0.1, topP: 0.95 }
+                })
+            });
 
-        if (res.status === 429) { 
-            for (let s = 10; s > 0; s--) {
-                spellerBtn.textContent = `AI 한도 도달 - ${s}초 대기 중...`;
-                await new Promise(r => setTimeout(r, 1000));
+            if (res.status === 429) { 
+                // 할당량 초과 시: 다음 키가 있다면 즉시 교체하여 재시도
+                if (geminiKeys.length > 1 && retryCount < geminiKeys.length - 1) {
+                    currentGeminiKeyIndex++;
+                    retryCount++;
+                    spellerBtn.textContent = `키 교체 중... (${currentGeminiKeyIndex + 1}번 키)`;
+                    continue; 
+                } else {
+                    // 모든 키를 다 써봤다면 대기 후 다시 처음부터 시도
+                    for (let s = 10; s > 0; s--) {
+                        spellerBtn.textContent = `모든 키 한도 도달 - ${s}초 대기 중...`;
+                        await new Promise(r => setTimeout(r, 1000));
+                    }
+                    currentGeminiKeyIndex = 0;
+                    retryCount = 0;
+                    continue;
+                }
             }
-            continue;
-        }
 
-        if (!res.ok) {
-            const errorData = await res.json();
-            throw new Error(`Gemini API 오류: ${errorData.error.message || res.status}`);
-        }
+            if (!res.ok) {
+                const errorData = await res.json();
+                throw new Error(`Gemini API 오류: ${errorData.error.message || res.status}`);
+            }
 
-        const data = await res.json();
-        if (data.candidates && data.candidates[0].content && data.candidates[0].content.parts) {
-            return data.candidates[0].content.parts[0].text.trim();
+            const data = await res.json();
+            if (data.candidates && data.candidates[0].content && data.candidates[0].content.parts) {
+                return data.candidates[0].content.parts[0].text.trim();
+            }
+            throw new Error('AI 응답을 받지 못했습니다.');
+
+        } catch (e) {
+            console.error("Gemini 요청 실패:", e);
+            throw e;
         }
-        throw new Error('AI 응답을 받지 못했습니다.');
     }
 }
 
@@ -618,18 +630,47 @@ spellerBtn.addEventListener('click', async () => {
 
     const geminiKey = geminiApiKeyInput.value.trim();
     
-    // AI 지능형 가공 모드 (Gemini Key가 있을 때)
+    // AI 지능형 가공 모드 (Gemini Key가 있을 때) - 실시간 청크 처리
     if (geminiKey) {
         spellerBtn.disabled = true;
-        spellerBtn.textContent = 'AI 지능형 가공 중...';
-        try {
-            spellOriginalText = text;
-            const refinedText = await processWithGemini(text);
-            if (refinedText) {
-                resultText.value = refinedText;
-                spellerBtn.textContent = 'AI 가공 완료 ✓';
-                spellerRevertBtn.style.display = 'inline-block';
+        spellOriginalText = text;
+        
+        // 1. 문단 단위로 쪼개기 (\n\n 기준)
+        const paragraphs = text.split(/\n\n+/);
+        const chunks = [];
+        let currentChunk = "";
+
+        // 약 500자 단위로 묶어서 API 요청 횟수 최적화
+        for (const p of paragraphs) {
+            if ((currentChunk.length + p.length) > 500 && currentChunk !== "") {
+                chunks.push(currentChunk);
+                currentChunk = p;
+            } else {
+                currentChunk = currentChunk === "" ? p : currentChunk + "\n\n" + p;
             }
+        }
+        if (currentChunk) chunks.push(currentChunk);
+
+        try {
+            let finalResult = [];
+            resultText.value = ""; // 실시간 업데이트를 위해 초기화
+            
+            for (let i = 0; i < chunks.length; i++) {
+                spellerBtn.textContent = `AI 가공 중... (${i + 1}/${chunks.length})`;
+                const refinedChunk = await processWithGemini(chunks[i]);
+                
+                if (refinedChunk) {
+                    finalResult.push(refinedChunk);
+                    // 실시간으로 텍스트박스 업데이트
+                    resultText.value = finalResult.join("\n\n");
+                    resultText.scrollTop = resultText.scrollHeight; // 최하단으로 스크롤
+                } else {
+                    finalResult.push(chunks[i]); // 실패 시 원본 유지
+                }
+            }
+
+            spellerBtn.textContent = 'AI 가공 완료 ✓';
+            spellerRevertBtn.style.display = 'inline-block';
             setTimeout(() => { 
                 spellerBtn.textContent = 'AI 재가공'; 
                 spellerBtn.disabled = false; 
@@ -642,7 +683,7 @@ spellerBtn.addEventListener('click', async () => {
         return;
     }
 
-    // 일반 맞춤법 검사 모드 (기본)
+    // 일반 맞춤법 검사 모드 (기본) - 기존 로직 유지
     spellerBtn.disabled = true;
     spellerBtn.textContent = '교정 중...';
     try {

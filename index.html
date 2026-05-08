@@ -67,8 +67,8 @@
                                     <label for="apiKey" style="width: auto;">Vision API 키</label>
                                     <input type="password" class="lang-select" id="apiKey" placeholder="AIza... (Vision API)" style="flex: 1; margin-bottom: 8px;">
                                     
-                                    <label for="geminiApiKey" style="width: auto;">Gemini API 키</label>
-                                    <input type="password" class="lang-select" id="geminiApiKey" placeholder="AIza... (Google AI Studio)" style="flex: 1; margin-bottom: 8px;">
+                                    <label for="geminiApiKey" style="width: auto;">Gemini API 키 (줄바꿈으로 여러 개 입력 가능)</label>
+                                    <textarea class="lang-select" id="geminiApiKey" placeholder="AIza... (첫 번째 키)&#10;AIza... (두 번째 키)" style="flex: 1; margin-bottom: 8px; min-height: 60px; padding: 10px; font-family: monospace; resize: vertical;"></textarea>
 
                                     <div style="font-size: 11px; color: var(--ink-faint); margin-top: 4px; line-height: 1.4; width: 100%;">
                                         <strong>Vision API:</strong> OCR 텍스트 추출용 (<a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color: var(--ink-dim); text-decoration: underline;">Cloud Console</a>)<br>
