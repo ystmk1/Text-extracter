@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>텍스트 추출기 - 고정확도 OCR</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="shell container">
+        <header>
+            <div class="brand">
+                <span class="brand-mark"></span>
+                <div class="brand-text">
+                    <h1>Text<em>/</em>Extractor</h1>
+                    <div class="sub">Google Cloud Vision & Tesseract.js</div>
+                </div>
+            </div>
+            <div class="status-chip">
+                <span class="status-dot ready"></span>
+                <span>준비 완료</span>
+            </div>
+        </header>
+
+        <main class="workspace">
+            <!-- Left Panel: Input & Preview -->
+            <div class="panel">
+                <div class="panel-head">
+                    <div class="panel-title">
+                        <span class="num">01</span>이미지 입력
+                    </div>
+                </div>
+                
+                <div class="panel-body input-body">
+                    <div class="upload-section">
+                        <div class="upload-area drop-zone" id="uploadArea">
+                            <svg class="drop-icon" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <rect x="8" y="12" width="48" height="40" rx="3"/>
+                                <circle cx="22" cy="26" r="4"/>
+                                <path d="M8 44 L24 30 L36 40 L46 32 L56 40"/>
+                            </svg>
+                            <div class="drop-text">이미지를 <em>끌어다 놓거나</em> 클릭</div>
+                            <div class="drop-sub">여러 장 선택 가능 · JPG/PNG/GIF</div>
+                            <input type="file" id="fileInput" accept="image/*" multiple hidden>
+                        </div>
+                    </div>
+
+                    <div class="preview-section" id="previewSection" style="display: none;">
+                        <h2 class="section-subtitle">미리보기</h2>
+                        <div class="image-preview">
+                            <img id="previewImage" alt="미리보기">
+                        </div>
+                        <div class="file-list" id="fileList"></div>
+                        
+                        <div class="ocr-options api-box">
+                            <label class="option-label">
+                                <input type="radio" name="ocrMethod" value="google" checked>
+                                <span>Google Vision API</span>
+                            </label>
+                            <label class="option-label">
+                                <input type="radio" name="ocrMethod" value="tesseract">
+                                <span>Tesseract.js (로컬)</span>
+                            </label>
+                            
+                            <div class="select-group" id="googleVisionConfig">
+                                <div class="select-row" style="flex-wrap: wrap;">
+                                    <label for="apiKey" style="width: auto;">API 키</label>
+                                    <input type="password" class="lang-select" id="apiKey" placeholder="AIza... (입력 후 엔터)" style="flex: 1; margin-bottom: 8px;">
+                                    <div style="font-size: 11px; color: var(--ink-faint); margin-top: 4px; line-height: 1.4; width: 100%;">
+                                        Google Cloud Console에서 Vision API 활성화 후 API 키를 생성해주세요.<br>
+                                        <a href="https://console.cloud.google.com/apis/library/vision.googleapis.com" target="_blank" style="color: var(--ink-dim); text-decoration: underline;">[비전 API 활성화]</a>
+                                        <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color: var(--ink-dim); text-decoration: underline;">[API 키 생성]</a><br><br>
+                                        * 입력하신 키는 서버로 절대 전송되지 않으며, 고객님의 브라우저(localStorage)에만 안전하게 보관됩니다. (새로고침시 유지)
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="select-group">
+                                <div class="select-row">
+                                    <label for="visionMode">모드</label>
+                                    <select class="lang-select" id="visionMode">
+                                        <option value="DOCUMENT_TEXT_DETECTION" selected>문서 스캔</option>
+                                        <option value="TEXT_DETECTION">자연/장면 (간판)</option>
+                                    </select>
+                                </div>
+                                <div class="select-row">
+                                    <label for="visionLang">언어</label>
+                                    <select class="lang-select" id="visionLang">
+                                        <option value="ko+en" selected>한+영</option>
+                                        <option value="ko">한국어</option>
+                                        <option value="en">English</option>
+                                    </select>
+                                </div>
+                                <div class="select-row">
+                                    <label for="postProcessMode">후처리</label>
+                                    <select class="lang-select" id="postProcessMode">
+                                        <option value="smart" selected>스마트 (한국어)</option>
+                                        <option value="concat">모두 붙임 (중/일)</option>
+                                        <option value="space">공백 변환 (영어)</option>
+                                        <option value="off">끄기 (원본)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="action-buttons">
+                            <button class="icon-btn primary" id="extractBtn">텍스트 추출</button>
+                            <button class="icon-btn" id="resetBtn">초기화</button>
+                        </div>
+                    </div>
+
+                    <div class="loading-section" id="loadingSection" style="display: none;">
+                        <div class="progress-wrap active">
+                            <span class="status-dot working" style="margin-right: 8px;"></span>
+                            <div class="progress-track">
+                                <div class="progress-fill" id="progressFill"></div>
+                            </div>
+                            <div class="progress-text" id="loadingText">추출 중...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Extract Result -->
+            <div class="panel">
+                <div class="panel-head">
+                    <div class="panel-title"><span class="num">02</span>추출 결과</div>
+                    <div class="panel-actions">
+                        <button class="icon-btn" id="spellerBtn">맞춤법</button>
+                        <button class="icon-btn" id="spellerRevertBtn" style="display:none">원본으로</button>
+                        <button class="icon-btn" id="fixBtn">자동수정</button>
+                        <button class="icon-btn" id="copyBtn">복사</button>
+                        <button class="icon-btn primary" id="downloadBtn">.txt 저장</button>
+                    </div>
+                </div>
+                
+                <div class="panel-body result-body">
+                    <div class="result-section" id="resultSection" style="display: none;">
+                        <div class="editor-stats">
+                            <span>엔진 <strong class="success" id="methodBadge">대기중</strong></span>
+                        </div>
+                        <div class="editor-wrap">
+                            <textarea id="resultText" placeholder="추출된 텍스트가 여기에 나타납니다."></textarea>
+                        </div>
+                    </div>
+                    <div class="empty-state" id="resultEmptyState">
+                        왼쪽에서 이미지를 선택하고 추출을 시작하세요.
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <span>Powered by Google Cloud Vision API & Tesseract.js</span>
+            <em>many frames, one story</em>
+        </footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
+    <script src="/script.js"></script>
+</body>
+</html>
+

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OCR 텍스트 추출기 · Google Vision</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,800&family=JetBrains+Mono:wght@400;500&family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./css/styles.css">
+</head>
+<body>
+
+<div class="shell">
+
+  <header>
+    <div class="brand">
+      <span class="brand-mark"></span>
+      <div class="brand-text">
+        <h1>Opticon<em>/</em>OCR</h1>
+        <div class="sub">Google Cloud Vision · Batch Document Text Detection</div>
+      </div>
+    </div>
+    <div class="status-chip">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">대기 중</span>
+    </div>
+  </header>
+
+  <div class="api-box">
+    <label>API Key</label>
+    <input type="password" id="apiKey" placeholder="AIza..." autocomplete="off" />
+    <button id="saveKey">저장</button>
+    <button id="clearKey">지우기</button>
+    <div class="api-hint">
+      Google Cloud Vision API 키가 필요합니다.
+      <a href="https://console.cloud.google.com/apis/library/vision.googleapis.com" target="_blank" rel="noopener">Cloud Console에서 Vision API 활성화</a> 후
+      <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">API 키 생성</a>. 키는 브라우저 localStorage에만 저장됩니다.
+    </div>
+  </div>
+
+  <div class="workspace">
+    <!-- LEFT: Images -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">
+          <span class="num">01</span>이미지 입력
+          <span class="count" id="imageCount"></span>
+        </div>
+        <div class="panel-actions">
+          <select class="lang-select" id="langHint" title="언어 힌트">
+            <option value="">자동</option>
+            <option value="ko" selected>한국어</option>
+            <option value="en">English</option>
+            <option value="ja">日本語</option>
+            <option value="zh">中文</option>
+            <option value="ko,en">한+영</option>
+          </select>
+          <button class="icon-btn" id="pasteBtn">붙여넣기</button>
+          <button class="icon-btn" id="clearAll" disabled>모두 지우기</button>
+        </div>
+      </div>
+      <div class="image-area">
+        <div class="drop-zone" id="dropZone">
+          <svg class="drop-icon" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="8" y="12" width="48" height="40" rx="3"/>
+            <circle cx="22" cy="26" r="4"/>
+            <path d="M8 44 L24 30 L36 40 L46 32 L56 40"/>
+          </svg>
+          <div class="drop-text">여러 이미지를 <em>끌어다 놓거나</em></div>
+          <div class="drop-sub">클릭 · Ctrl+V 붙여넣기 · 목록에서 드래그로 순서 변경</div>
+          <input type="file" id="fileInput" accept="image/*" multiple />
+        </div>
+        <div class="image-list" id="imageList">
+          <div class="empty-state">아직 이미지가 없습니다</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Text -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title"><span class="num">02</span>추출된 텍스트</div>
+        <div class="panel-actions">
+          <div class="sep-control">
+            <span>구분</span>
+            <select id="separator">
+              <option value="blank">빈 줄</option>
+              <option value="newline">줄바꿈</option>
+              <option value="marker" selected>--- 표시 ---</option>
+              <option value="filename">파일명 헤더</option>
+              <option value="none">없음</option>
+            </select>
+          </div>
+          <button class="icon-btn primary" id="extractBtn" disabled>전체 추출</button>
+          <button class="icon-btn" id="copyBtn" disabled>복사</button>
+          <button class="icon-btn" id="downloadBtn" disabled>.txt</button>
+        </div>
+      </div>
+      <div class="editor-wrap">
+        <div class="progress-wrap" id="progressWrap">
+          <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+          <div class="progress-text" id="progressText">0 / 0</div>
+        </div>
+        <div class="editor-stats">
+          <span>이미지 <strong id="imgStatCount">0</strong></span>
+          <span>문자 <strong id="charCount">0</strong></span>
+          <span>단어 <strong id="wordCount">0</strong></span>
+          <span>줄 <strong id="lineCount">0</strong></span>
+        </div>
+        <textarea id="output" placeholder="여러 이미지에서 추출한 텍스트가 순서대로 여기에 나타납니다. 자유롭게 수정 후 복사하거나 다운로드할 수 있습니다."></textarea>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <span>Batch OCR · ordered output · editable</span>
+    <em>many frames, one story</em>
+  </footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>
