@@ -240,7 +240,8 @@ function processBookText(text, mode, targetPageNum = null) {
         "카타", "드를", "늘게", "만일",
         "가?", "합니까", "갤",
         "마리를", "서랍에서",
-        "좇아", "가다가는", "없이", "되니까", // 29차 분석 케이스 (소설 표현)
+        "좇아", "가다가는", "없이", "되니까",
+        "하는", "다시", "특히", "가느다란", // 30차 분석 케이스 (소설 및 지문 묘사)
         "안일", "만스럽", "무런", "미를", "어오는", "아왔다", "람들은", "질밖에"
     ];
     const suffixPattern = suffixList.join('|');
@@ -542,7 +543,21 @@ async function fetchSpeller(chunkText) {
     }
 }
 
+const geminiModelInput = document.getElementById('geminiModel'); // 30차 추가
+
 let currentGeminiKeyIndex = 0; // API 키 로테이션용 인덱스
+let detectedModelName = null; // 자동 감지된 모델명 캐싱
+
+// 초기화: 저장된 모델명 불러오기
+const savedGeminiModel = localStorage.getItem('google_gemini_model');
+if (savedGeminiModel) geminiModelInput.value = savedGeminiModel;
+
+geminiModelInput.addEventListener('change', (e) => {
+    const val = e.target.value.trim();
+    if (val) localStorage.setItem('google_gemini_model', val);
+    else localStorage.removeItem('google_gemini_model');
+    detectedModelName = null; // 모델 변경 시 캐시 초기화
+});
 
 async function processWithGemini(text) {
     const rawKeys = geminiApiKeyInput.value.trim();
@@ -552,21 +567,53 @@ async function processWithGemini(text) {
     const geminiKeys = rawKeys.split(/\n/).map(k => k.trim()).filter(k => k !== "");
     if (geminiKeys.length === 0) return null;
 
-    const MODEL = "gemini-1.5-flash";
-    
     let retryCount = 0;
     while (retryCount < geminiKeys.length + 1) {
         // 인덱스가 범위를 벗어나면 처음으로 순환
         if (currentGeminiKeyIndex >= geminiKeys.length) currentGeminiKeyIndex = 0;
         
         const currentKey = geminiKeys[currentGeminiKeyIndex];
-        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${currentKey}`;
+
+        // 1. 모델명 결정 (사용자 지정 vs 자동 감지)
+        let modelToUse = geminiModelInput.value.trim();
+        
+        if (!modelToUse) {
+            // 사용자 지정이 없으면 자동 감지 시도
+            if (!detectedModelName) {
+                try {
+                    const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${currentKey}`;
+                    const listRes = await fetch(listUrl);
+                    if (listRes.ok) {
+                        const listData = await listRes.json();
+                        // generateContent를 지원하고 'flash'가 포함된 모델 중 가장 최신 것 찾기
+                        const flashModel = listData.models
+                            .filter(m => m.supportedGenerationMethods.includes('generateContent') && m.name.includes('flash'))
+                            .sort((a, b) => b.name.localeCompare(a.name))[0];
+                        
+                        if (flashModel) {
+                            detectedModelName = flashModel.name; // 'models/gemini-1.5-flash' 형태
+                        }
+                    }
+                } catch (e) {
+                    console.warn("모델 자동 감지 실패:", e);
+                }
+            }
+            modelToUse = detectedModelName || "models/gemini-1.5-flash";
+        }
+
+        // 모델명에 'models/' 접두사가 없으면 추가 (URL 형식을 위해)
+        if (modelToUse && !modelToUse.startsWith('models/')) {
+            modelToUse = `models/${modelToUse}`;
+        }
+
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/${modelToUse}:generateContent?key=${currentKey}`;
 
         const prompt = `As a professional book editor, clean up the following OCR-extracted Korean text.
 Rules:
-1. Fix all typos, spacing, and punctuation based on context. (e.g., "단 한 가지", "일을 하는", "의자 위에")
-2. Remove "Phantom Quotes": OCR often adds a leading quote (") to narration lines incorrectly. Remove them if the line is a descriptive sentence.
-3. Restore "Missing Closing Quotes": Ensure every dialogue starts and ends with a quote (").
+1. Fix all typos, spacing, and punctuation based on context. (e.g., "하는 짓", "특히 이", "그 가느다란")
+2. Fix Misplaced Quotes: OCR often misses the closing quote (") at the end of a dialogue and incorrectly puts a leading quote (") at the start of the next narration paragraph. Restore the closing quote to the dialogue and remove the ghost quote from the narration.
+3. Remove "Phantom Quotes": Remove any remaining leading quotes (") from descriptive narration lines.
+4. Restore "Missing Closing Quotes": Ensure every dialogue ends with a proper quote (").
 4. Merge lines that belong to the same paragraph naturally.
 5. Separate dialogues from narration with double newlines. 
 6. Correct OCR artifacts (broken characters, noise).
