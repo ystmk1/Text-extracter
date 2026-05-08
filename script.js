@@ -229,6 +229,9 @@ function processBookText(text, mode, targetPageNum = null) {
         "지요", 
         "정했어", "열다섯", "갈수", "될",
         "없이", "게", "다시", "등짝에", "흔적이",
+        "셨습니다", "름도", "닥에",
+        "종의", "러운", "쳐져", "구이자",
+        "졌고", "품의", "입니다", // 24차 분석 케이스
         "안일", "만스럽", "무런", "미를", "어오는", "아왔다", "람들은", "질밖에"
     ];
     const suffixPattern = suffixList.join('|');
@@ -390,6 +393,7 @@ extractBtn.addEventListener('click', async () => {
             // ── 지능형 페이지 번호 감지 및 연속성 체크 ──
             let lines = extractedText.split('\n').map(l => l.trim()).filter(l => l !== '');
             let confirmedPageNum = null;
+            let isJump = false;
             
             if (lines.length > 0) {
                 let topNumMatch = lines[0].match(/^\d+$/);
@@ -406,6 +410,13 @@ extractBtn.addEventListener('click', async () => {
                     } else if (num === lastDetectedPageNum + 1) {
                         lastDetectedPageNum = num;
                         confirmedPageNum = num;
+                        isJump = false;
+                        break;
+                    } else {
+                        // 페이지가 비연속적으로 튄 경우
+                        lastDetectedPageNum = num;
+                        confirmedPageNum = num;
+                        isJump = true; 
                         break;
                     }
                 }
@@ -413,6 +424,11 @@ extractBtn.addEventListener('click', async () => {
 
             // 각 페이지별로 후처리 적용
             let pageProcessed = processBookText(extractedText, postProcessMode.value, confirmedPageNum);
+            
+            // 만약 이전 페이지와 비연속적이라면 구분선 강조 및 이전 파편과 거리 두기
+            if (isJump && processedPageTexts.length > 0) {
+                processedPageTexts.push('\n\n[...내용 생략...]\n\n'); 
+            }
             processedPageTexts.push(pageProcessed);
             
             progressFill.style.width = Math.round(((i + 1) / totalFiles) * 100) + '%';
