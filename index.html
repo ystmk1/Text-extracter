@@ -62,15 +62,18 @@
                                 <span>Tesseract.js (로컬)</span>
                             </label>
                             
-                            <div class="select-group" id="googleVisionConfig">
+                             <div class="select-group" id="googleVisionConfig">
                                 <div class="select-row" style="flex-wrap: wrap;">
-                                    <label for="apiKey" style="width: auto;">API 키</label>
-                                    <input type="password" class="lang-select" id="apiKey" placeholder="AIza... (입력 후 엔터)" style="flex: 1; margin-bottom: 8px;">
+                                    <label for="apiKey" style="width: auto;">Vision API 키</label>
+                                    <input type="password" class="lang-select" id="apiKey" placeholder="AIza... (Vision API)" style="flex: 1; margin-bottom: 8px;">
+                                    
+                                    <label for="geminiApiKey" style="width: auto;">Gemini API 키</label>
+                                    <input type="password" class="lang-select" id="geminiApiKey" placeholder="AIza... (Google AI Studio)" style="flex: 1; margin-bottom: 8px;">
+
                                     <div style="font-size: 11px; color: var(--ink-faint); margin-top: 4px; line-height: 1.4; width: 100%;">
-                                        Google Cloud Console에서 Vision API 활성화 후 API 키를 생성해주세요.<br>
-                                        <a href="https://console.cloud.google.com/apis/library/vision.googleapis.com" target="_blank" style="color: var(--ink-dim); text-decoration: underline;">[비전 API 활성화]</a>
-                                        <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color: var(--ink-dim); text-decoration: underline;">[API 키 생성]</a><br><br>
-                                        * 입력하신 키는 서버로 절대 전송되지 않으며, 고객님의 브라우저(localStorage)에만 안전하게 보관됩니다. (새로고침시 유지)
+                                        <strong>Vision API:</strong> OCR 텍스트 추출용 (<a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color: var(--ink-dim); text-decoration: underline;">Cloud Console</a>)<br>
+                                        <strong>Gemini API:</strong> AI 지능형 맞춤법/후가공용 (<a href="https://aistudio.google.com/app/apikey" target="_blank" style="color: var(--ink-dim); text-decoration: underline;">AI Studio</a>)<br><br>
+                                        * 입력하신 키는 브라우저(localStorage)에만 안전하게 보관됩니다.
                                     </div>
                                 </div>
                             </div>
