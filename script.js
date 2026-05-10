@@ -1,3 +1,6 @@
+// 31차 추가: PDF.js 워커 설정
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
 // DOM 요소 가져오기
 const uploadArea = document.getElementById('uploadArea');
 const fileInput = document.getElementById('fileInput');
@@ -89,27 +92,86 @@ uploadArea.addEventListener('dragleave', () => {
 uploadArea.addEventListener('drop', (e) => {
     e.preventDefault();
     uploadArea.classList.remove('dragover');
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    const files = Array.from(e.dataTransfer.files).filter(f => 
+        f.type.startsWith('image/') || f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')
+    );
     
     if (files.length > 0) {
         handleFiles(files);
     } else {
-        alert('이미지 파일만 업로드할 수 있습니다.');
+        alert('이미지 또는 PDF 파일만 업로드할 수 있습니다.');
     }
 });
 
 // 파일 처리 함수
-function handleFiles(files) {
+async function handleFiles(files) {
     if (!files || files.length === 0) return;
-    currentFiles = Array.from(files);
+    
+    uploadArea.classList.add('processing');
+    const dropText = uploadArea.querySelector('.drop-text');
+    const originalText = dropText.innerHTML;
+    dropText.textContent = '파일 분석 중...';
+
+    const processedFiles = [];
+    for (const file of Array.from(files)) {
+        if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+            try {
+                const pdfImages = await convertPdfToImages(file);
+                processedFiles.push(...pdfImages);
+            } catch (e) {
+                console.error("PDF 변환 오류:", e);
+                alert(`${file.name} 파일을 변환하는 데 실패했습니다.`);
+            }
+        } else {
+            processedFiles.push(file);
+        }
+    }
+
+    currentFiles = processedFiles;
     renderFileList();
-    showPreview(currentFiles[0]);
-    previewSection.style.display = 'block';
+    if (currentFiles.length > 0) {
+        showPreview(currentFiles[0]);
+        previewSection.style.display = 'block';
+    }
+    
+    uploadArea.classList.remove('processing');
+    dropText.innerHTML = originalText;
     resultSection.style.display = 'none';
     loadingSection.style.display = 'none';
 }
 
+async function convertPdfToImages(file) {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const images = [];
+    
+    for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale: 2.0 }); // 고화질 OCR을 위해 2배 확대
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+        
+        await page.render({ canvasContext: context, viewport: viewport }).promise;
+        
+        // 가짜 파일 객체 생성 (기존 로직 호환용)
+        const dataUrl = canvas.toDataURL('image/png');
+        images.push({
+            name: `${file.name} (page ${i})`,
+            type: 'image/png',
+            dataUrl: dataUrl,
+            isPdfPage: true
+        });
+    }
+    return images;
+}
+
 function showPreview(file) {
+    if (file.dataUrl) {
+        previewImage.src = file.dataUrl;
+        return;
+    }
     const reader = new FileReader();
     reader.onload = (e) => { previewImage.src = e.target.result; };
     reader.readAsDataURL(file);
@@ -199,6 +261,9 @@ resetBtn.addEventListener('click', () => {
 
 // Base64 유틸리티
 function getBase64(file) {
+    if (file.dataUrl) {
+        return Promise.resolve(file.dataUrl.replace(/^data:image\/[a-z]+;base64,/, ""));
+    }
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
@@ -398,7 +463,7 @@ extractBtn.addEventListener('click', async () => {
                 methodBadge.textContent = 'Tesseract.js (로컬)';
                 methodBadge.style.color = 'var(--ink-dim)';
                 const { data: { text } } = await Tesseract.recognize(
-                    file, visionLang.value === 'ko' ? 'kor' : 'eng',
+                    file.dataUrl || file, visionLang.value === 'ko' ? 'kor' : 'eng',
                     { logger: m => {
                         if (m.status === 'recognizing text') {
                             const p = Math.round(m.progress * 100);

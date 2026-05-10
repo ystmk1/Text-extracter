@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>텍스트 추출기 - 고정확도 OCR</title>
+    <!-- 31차 추가: PDF 지원용 라이브러리 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -39,9 +41,9 @@
                                 <circle cx="22" cy="26" r="4"/>
                                 <path d="M8 44 L24 30 L36 40 L46 32 L56 40"/>
                             </svg>
-                            <div class="drop-text">이미지를 <em>끌어다 놓거나</em> 클릭</div>
-                            <div class="drop-sub">여러 장 선택 가능 · JPG/PNG/GIF</div>
-                            <input type="file" id="fileInput" accept="image/*" multiple hidden>
+                            <div class="drop-text">이미지/PDF를 <em>끌어다 놓거나</em> 클릭</div>
+                            <div class="drop-sub">여러 장/파일 선택 가능 · JPG/PNG/PDF</div>
+                            <input type="file" id="fileInput" accept="image/*,.pdf" multiple hidden>
                         </div>
                     </div>
 
